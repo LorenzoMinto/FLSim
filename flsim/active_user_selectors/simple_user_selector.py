@@ -347,6 +347,62 @@ class ImportanceSamplingActiveUserSelector(ActiveUserSelector):
         return selected_indices
 
 
+class TierAwareActiveUserSelector(ActiveUserSelector):
+    """User selector which performs tier-based user selection.
+    Each user is randomly selected with probability =
+        `tier level * clients per round / total samples in dataset`
+    """
+
+    def __init__(self, **kwargs):
+        init_self_cfg(
+            self,
+            component_class=__class__,
+            config_class=TierAwareActiveUserSelector,
+            **kwargs,
+        )
+
+        super().__init__(**kwargs)
+
+    @classmethod
+    def _set_defaults_in_cfg(cls, cfg):
+        pass
+
+    def get_user_indices(self, **kwargs) -> List[int]:
+        required_inputs = ["num_total_users", "users_per_round", "tier_per_user"]
+        (
+            num_total_users,
+            users_per_round,
+            tier_per_user,
+        ) = self.unpack_required_inputs(required_inputs, kwargs)
+
+        assert (
+            len(tier_per_user) == num_total_users
+        ), "Mismatch between num_total_users and num_samples_per_user length"
+        assert users_per_round > 0, "users_per_round must be greater than 0"
+
+        prob = torch.tensor(tier_per_user).float()
+        total_tier_points = torch.sum(prob)
+        prob = prob * users_per_round / total_tier_points
+
+        # Iterate num_tries times to ensure that selected indices is non-empty
+        selected_indices = []
+        for _ in range(self.cfg.num_tries):
+            selected_indices = (
+                torch.nonzero(torch.rand(num_total_users, generator=self.rng) < prob)
+                .flatten()
+                .tolist()
+            )
+            if len(selected_indices) > 0:
+                break
+
+        assertNotEmpty(
+            selected_indices,
+            "Tier-based selection did not return any clients for the current round",
+        )
+
+        return selected_indices
+
+
 @dataclass
 class ActiveUserSelectorConfig:
     _target_: str = MISSING
@@ -374,3 +430,8 @@ class RandomRoundRobinActiveUserSelectorConfig(ActiveUserSelectorConfig):
 class ImportanceSamplingActiveUserSelectorConfig(ActiveUserSelectorConfig):
     _target_: str = fullclassname(ImportanceSamplingActiveUserSelector)
     num_tries: int = 10
+
+@dataclass
+class TierBasedActiveUserSelectorConfig(ActiveUserSelectorConfig):
+    _target_: str = fullclassname(TierBasedActiveUserSelector)
+    num_tries: int = 10 

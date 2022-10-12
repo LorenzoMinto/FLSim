@@ -43,3 +43,9 @@ ConfigStore.instance().store(
     node=FedShuffleClientConfig,
     group="client",
 )
+
+ConfigStore.instance().store(
+    name="tiered_client",
+    node=TieredClientConfig,
+    group="client",
+)

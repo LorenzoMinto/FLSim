@@ -244,6 +244,57 @@ class PowerLawSharder(FLDataSharder):
         ), "number of rows must be at least the number of shards"
         return shards
 
+class KeySharderWithTier(FLDataSharder):
+    """Specify a column name used to shard.
+    It should be the last column in the file,
+    and sharding_column must be specified.
+    """
+
+    def __init__(self, **kwargs):
+        init_self_cfg(
+            self,
+            component_class=__class__,
+            config_class=KeySharderWithTierConfig,
+            **kwargs,
+        )
+        super().__init__(**kwargs)
+        
+    def shard_rows(self, data_rows: Shardable) -> Iterable[Tuple[str, Any]]:
+        """Partition a set of rows into multiple sets using a sharding strategy.
+
+        Args:
+            data_rows: Iterable[Dict[str, Any]]]: iterable over dictionary mapping column
+            name to value.
+        """
+        shards = defaultdict(list)
+        # pyre-fixme[16]: `Dataset` has no attribute `__iter__`.
+        for one_row in data_rows:
+            for shard_id, tier_id in self.shard_for_row(one_row):
+                shards[str(shard_id)].append(one_row)
+        return shards.items()
+
+    def shard_for_row(self, data_object: Dict[Any, Any]) -> List[Any]:
+        sharding_key = self.cfg.sharding_key
+        assert sharding_key in data_object, "Sharding key not in object: "
+        f"{sharding_key}"
+
+        shard_idx = data_object[sharding_key]
+        
+        # shard_idx can be a 0-dim tensor when a table column is an integer.
+        if isinstance(shard_idx, torch.Tensor):
+            shard_idx = shard_idx.item()
+        
+        tier_key = self.cfg.tier_key
+        assert tier_key in data_object, "Tier key not in object: "
+        f"{tier_key}"
+
+        tier_idx = data_object[tier_key]
+
+        # tier_idx can be a 0-dim tensor when a table column is an integer.
+        if isinstance(tier_idx, torch.Tensor):
+            tier_idx = tier_idx.item()
+
+        return [(shard_idx, tier_idx)]
 
 @dataclass
 class FLDataSharderConfig:
@@ -286,3 +337,9 @@ class PowerLawSharderConfig(FLDataSharderConfig):
     _target_: str = fullclassname(PowerLawSharder)
     num_shards: int = MISSING
     alpha: float = MISSING
+
+@dataclass
+class KeySharderWithTierConfig(FLDataSharderConfig):
+    _target_: str = fullclassname(KeySharderWithTier)
+    sharding_key: str = MISSING
+    tier_key: str = MISSING

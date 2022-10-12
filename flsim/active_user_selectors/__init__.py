@@ -41,3 +41,9 @@ ConfigStore.instance().store(
     node=ImportanceSamplingActiveUserSelectorConfig,
     group="active_user_selector",
 )
+
+ConfigStore.instance().store(
+    name="tier_based_active_user_selector",
+    node=TierBasedActiveUserSelector,
+    group="active_user_selector",
+)
