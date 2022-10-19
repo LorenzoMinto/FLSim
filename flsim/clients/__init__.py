@@ -8,6 +8,7 @@
 from hydra.core.config_store import ConfigStore
 
 from .base_client import ClientConfig
+from .tiered_client import TieredClientConfig
 from .dp_client import DPClientConfig
 from .sync_fedshuffle_client import FedShuffleClientConfig
 from .sync_mime_client import MimeClientConfig

@@ -12,6 +12,7 @@ from .simple_user_selector import (
     RandomRoundRobinActiveUserSelectorConfig,
     SequentialActiveUserSelectorConfig,
     UniformlyRandomActiveUserSelectorConfig,
+    TierBasedActiveUserSelectorConfig
 )
 
 
@@ -44,6 +45,6 @@ ConfigStore.instance().store(
 
 ConfigStore.instance().store(
     name="tier_based_active_user_selector",
-    node=TierBasedActiveUserSelector,
+    node=TierBasedActiveUserSelectorConfig,
     group="active_user_selector",
 )

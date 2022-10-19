@@ -13,9 +13,9 @@
           "active_user_selector": {
             "_base_": "tier_based_active_user_selector"
           },
-          "timeout_simulator": {
-            "_base_": "base_gaussian_timeout_simulator"
-          }
+        },
+        "timeout_simulator": {
+          "_base_": "base_gaussian_timeout_simulator"
         },
         "client": {
           "_base_": "tiered_client",

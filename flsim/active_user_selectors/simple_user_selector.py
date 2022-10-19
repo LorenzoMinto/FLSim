@@ -347,7 +347,7 @@ class ImportanceSamplingActiveUserSelector(ActiveUserSelector):
         return selected_indices
 
 
-class TierAwareActiveUserSelector(ActiveUserSelector):
+class TierBasedActiveUserSelector(ActiveUserSelector):
     """User selector which performs tier-based user selection.
     Each user is randomly selected with probability =
         `tier level * clients per round / total samples in dataset`
@@ -357,7 +357,7 @@ class TierAwareActiveUserSelector(ActiveUserSelector):
         init_self_cfg(
             self,
             component_class=__class__,
-            config_class=TierAwareActiveUserSelector,
+            config_class=TierBasedActiveUserSelectorConfig,
             **kwargs,
         )
 
@@ -368,19 +368,19 @@ class TierAwareActiveUserSelector(ActiveUserSelector):
         pass
 
     def get_user_indices(self, **kwargs) -> List[int]:
-        required_inputs = ["num_total_users", "users_per_round", "tier_per_user"]
+        required_inputs = ["num_total_users", "users_per_round", "tier_per_users"]
         (
             num_total_users,
             users_per_round,
-            tier_per_user,
+            tier_per_users,
         ) = self.unpack_required_inputs(required_inputs, kwargs)
 
         assert (
-            len(tier_per_user) == num_total_users
-        ), "Mismatch between num_total_users and num_samples_per_user length"
+            len(tier_per_users) == num_total_users
+        ), "Mismatch between num_total_users and tier_per_users length"
         assert users_per_round > 0, "users_per_round must be greater than 0"
 
-        prob = torch.tensor(tier_per_user).float()
+        prob = torch.tensor(tier_per_users).float()
         total_tier_points = torch.sum(prob)
         prob = prob * users_per_round / total_tier_points
 
@@ -434,4 +434,4 @@ class ImportanceSamplingActiveUserSelectorConfig(ActiveUserSelectorConfig):
 @dataclass
 class TierBasedActiveUserSelectorConfig(ActiveUserSelectorConfig):
     _target_: str = fullclassname(TierBasedActiveUserSelector)
-    num_tries: int = 10 
+    num_tries: int = 10

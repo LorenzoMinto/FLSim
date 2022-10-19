@@ -14,6 +14,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 import torch.nn as nn
 from flsim.active_user_selectors.simple_user_selector import (
     ActiveUserSelectorConfig,
+    TierBasedActiveUserSelector,
     UniformlyRandomActiveUserSelectorConfig,
 )
 from flsim.channels.base_channel import IdentityChannel, IFLChannel
@@ -162,6 +163,8 @@ class SyncServer(ISyncServer):
         self._active_user_selector = instantiate(self.cfg.active_user_selector)
         self._channel = channel or IdentityChannel()
 
+        self.tier_for_users = []
+
     @classmethod
     def _set_defaults_in_cfg(cls, cfg):
         """Set default user selector and server optimizer."""
@@ -181,9 +184,22 @@ class SyncServer(ISyncServer):
         data_provider: Optional[IFLDataProvider] = None,
         epoch: Optional[int] = None,
     ):
+
+        assert (data_provider is not None), "Data provider must be passed into SyncServer"
+
+        # tier_for_user is only needed for Tier Based Sampling
+        if (
+                isinstance(self._active_user_selector, TierBasedActiveUserSelector)
+                and len(self.tier_for_users) == 0
+            ):
+                self.tier_for_users = [
+                    user.user_tier() for user in data_provider.train_users()
+                ]
+
         return self._active_user_selector.get_user_indices(
             num_total_users=num_total_users,
             users_per_round=users_per_round,
+            tier_per_users=self.tier_for_users,
             data_provider=data_provider,
             global_model=self.global_model,
             epoch=epoch,
