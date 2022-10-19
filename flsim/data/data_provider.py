@@ -8,8 +8,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Iterable, Iterator, List, Optional
+from tqdm import tqdm
+from typing import Any, Iterable, Iterator, List, Optional, Dict
 
+import torch
 from flsim.interfaces.model import IFLModel
 
 
@@ -170,6 +172,85 @@ class FLUserDataFromList(IFLUserData):
     def num_eval_examples(self):
         return self._num_eval_examples
 
+class UserDataWithTier(IFLUserData):
+    def __init__(self, user_data: Dict[str, Generator], eval_split: float = 0.0):
+        self._train_batches = []
+        self._num_train_batches = 0
+        self._num_train_examples = 0
+
+        self._eval_batches = []
+        self._num_eval_batches = 0
+        self._num_eval_examples = 0
+
+        self._eval_split = eval_split
+
+        user_features = list(user_data["features"])
+        user_labels = list(user_data["labels"])
+        self._user_tier = int(next(user_data["tier"])[0])
+        total = sum(len(batch) for batch in user_labels)
+
+        for features, labels in zip(user_features, user_labels):
+            if self._num_eval_examples < int(total * self._eval_split):
+                self._num_eval_batches += 1
+                self._num_eval_examples += UserDataWithTier.get_num_examples(labels)
+                self._eval_batches.append(UserDataWithTier.fl_training_batch(features, labels))
+            else:
+                self._num_train_batches += 1
+                self._num_train_examples += UserDataWithTier.get_num_examples(labels)
+                self._train_batches.append(UserDataWithTier.fl_training_batch(features, labels))
+
+    def num_train_examples(self) -> int:
+        """
+        Returns the number of train examples
+        """
+        return self._num_train_examples
+
+    def num_eval_examples(self):
+        """
+        Returns the number of eval examples
+        """
+        return self._num_eval_examples
+
+    def num_train_batches(self):
+        """
+        Returns the number of train batches
+        """
+        return self._num_train_batches
+
+    def num_eval_batches(self):
+        """
+        Returns the number of eval batches
+        """
+        return self._num_eval_batches
+    
+    def user_tier(self):
+        return self._user_tier
+
+    def train_data(self) -> Iterator[Dict[str, torch.Tensor]]:
+        """
+        Iterator to return a user batch data for training
+        """
+        for batch in self._train_batches:
+            yield batch
+
+    def eval_data(self):
+        """
+        Iterator to return a user batch data for evaluation
+        """
+        for batch in self._eval_batches:
+            yield batch
+
+    @staticmethod
+    def get_num_examples(batch: List) -> int:
+        return len(batch)
+
+    @staticmethod
+    def fl_training_batch(
+        features: List[torch.Tensor], labels: List[float]
+    ) -> Dict[str, torch.Tensor]:
+        return {"features": torch.stack(features), "labels": torch.Tensor(labels)}
+
+
 
 class FLDataProviderFromList(IFLDataProvider):
     """Utility class to help ease the transition to IFLDataProvider
@@ -233,3 +314,52 @@ class FLDataProviderFromList(IFLDataProvider):
     def test_users(self):
         """Returns a list of test users."""
         return list(self._test_users.values())
+
+class DataProviderWithTier(IFLDataProvider):
+    def __init__(self, data_loader):
+        self.data_loader = data_loader
+        self._train_users = self._create_fl_users(
+            data_loader.fl_train_set(), eval_split=0.0
+        )
+        self._eval_users = self._create_fl_users(
+            data_loader.fl_eval_set(), eval_split=1.0
+        )
+        self._test_users = self._create_fl_users(
+            data_loader.fl_test_set(), eval_split=1.0
+        )
+
+    def train_user_ids(self) -> List[int]:
+        return list(self._train_users.keys())
+
+    def num_train_users(self) -> int:
+        return len(self._train_users)
+
+    def get_train_user(self, user_index: int) -> IFLUserData:
+        if user_index in self._train_users:
+            return self._train_users[user_index]
+        else:
+            raise IndexError(
+                f"Index {user_index} is out of bound for list with len {self.num_train_users()}"
+            )
+
+    def train_users(self) -> Iterable[IFLUserData]:
+        for user_data in self._train_users.values():
+            yield user_data
+
+    def eval_users(self) -> Iterable[IFLUserData]:
+        for user_data in self._eval_users.values():
+            yield user_data
+
+    def test_users(self) -> Iterable[IFLUserData]:
+        for user_data in self._test_users.values():
+            yield user_data
+
+    def _create_fl_users(
+        self, iterator: Iterator, eval_split: float = 0.0
+    ) -> Dict[int, IFLUserData]:
+        return {
+            user_index: UserDataWithTier(user_data, eval_split=eval_split)
+            for user_index, user_data in tqdm(
+                enumerate(iterator), desc="Creating FL User", unit="user"
+            )
+        }

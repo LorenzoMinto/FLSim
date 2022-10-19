@@ -230,7 +230,6 @@ class GaussianTimeOutSimulator(TimeOutSimulator):
             [self.cfg.timeout_wall_per_round, max(training_time_in_round)]
         )
 
-
 @dataclass
 class TimeOutSimulatorConfig:
     _target_: str = MISSING
